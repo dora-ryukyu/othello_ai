@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>オセロゲーム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* カスタムスタイル */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: clamp(300px, 90vw, 600px);
+            height: clamp(300px, 90vw, 600px);
+            border: 2px solid #333;
+            background-color: #008000; /* ボードの背景色 */
+        }
+        .cell {
+            border: 1px solid #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        .piece {
+            width: 85%;
+            height: 85%;
+            border-radius: 50%;
+            transform-style: preserve-3d;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+        }
+        .piece-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+        .piece-front, .piece-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden; /* Safari */
+            backface-visibility: hidden;
+            border-radius: 50%;
+        }
+        .piece-front {
+            background-color: black;
+        }
+        .piece-back {
+            background-color: white;
+            transform: rotateY(180deg);
+        }
+        .piece.black .piece-inner { transform: rotateY(0deg); }
+        .piece.white .piece-inner { transform: rotateY(180deg); }
+        .legal-move-hint {
+            width: 40%;
+            height: 40%;
+            border-radius: 50%;
+            background-color: rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .legal-move-hint:hover {
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* 新しく置かれた駒のアニメーション */
+        @keyframes place-anim {
+            from { transform: scale(0.3); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        .piece.placed {
+            animation: place-anim 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-4">オセロAI</h1>
+
+        <!-- 設定パネル -->
+        <div class="bg-white p-4 rounded-lg shadow-md mb-4 flex flex-wrap items-center justify-center gap-4">
+            <div>
+                <label for="gameMode" class="font-bold text-gray-700">モード:</label>
+                <select id="gameMode" class="border rounded p-2">
+                    <option value="human-vs-human">人 vs 人</option>
+                    <option value="human-vs-ai" selected>人 vs AI</option>
+                    <option value="ai-vs-ai">AI vs AI</option>
+                </select>
+            </div>
+            <div id="ai-selector-black-container" style="display: none;">
+                <label for="ai-selector-black" class="font-bold text-gray-700">黒の手番 AI:</label>
+                <select id="ai-selector-black" class="border rounded p-2"></select>
+            </div>
+            <div id="ai-selector-white-container">
+                <label for="ai-selector-white" class="font-bold text-gray-700">白の手番 AI:</label>
+                <select id="ai-selector-white" class="border rounded p-2"></select>
+            </div>
+            <button id="reset-button" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                リセット
+            </button>
+        </div>
+
+        <!-- ゲーム盤と情報パネル -->
+        <div class="flex flex-col md:flex-row gap-6 items-start justify-center">
+            
+            <!-- 情報パネル (改善) -->
+            <div class="w-full md:w-72 bg-white p-5 rounded-lg shadow-md order-first md:order-last">
+                <h2 class="text-xl font-bold mb-4 text-center text-gray-700">対戦情報</h2>
+                
+                <div class="space-y-6">
+                    <!-- ターン表示 -->
+                    <div class="text-center">
+                        <p class="text-gray-600">現在のターン</p>
+                        <div class="flex items-center justify-center gap-2 mt-1">
+                            <div id="turn-indicator-piece" class="w-8 h-8 rounded-full transition-all duration-300 shadow-md"></div>
+                            <span id="current-turn" class="font-bold text-3xl text-gray-800"></span>
+                        </div>
+                    </div>
+
+                    <!-- スコア表示 -->
+                    <div>
+                        <h3 class="font-bold text-lg text-center mb-2 text-gray-600">スコア</h3>
+                        <div class="flex w-full h-8 bg-gray-200 rounded-full overflow-hidden border-2 border-gray-300 shadow-inner">
+                            <div id="black-bar" class="bg-black transition-all duration-500 ease-out text-white flex items-center justify-center text-lg font-bold">
+                                <span id="black-score">2</span>
+                            </div>
+                            <div id="white-bar" class="bg-white transition-all duration-500 ease-out text-black flex items-center justify-center text-lg font-bold">
+                                <span id="white-score">2</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="game-result" class="mt-6 text-xl font-bold text-center h-12 flex items-center justify-center"></div>
+                
+                <!-- 棋譜表示エリア -->
+                <div class="mt-4">
+                    <h3 class="font-bold text-gray-600">棋譜</h3>
+                    <div id="game-log" class="h-48 bg-gray-100 p-2 rounded border overflow-y-auto text-sm"></div>
+                </div>
+            </div>
+
+            <!-- オセロ盤 -->
+            <div id="board-container" class="flex justify-center items-center">
+                <div id="board" class="board rounded-md shadow-lg overflow-hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- onnxruntime-webライブラリ -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    
+    <!-- ゲームロジックスクリプト -->
+    <script src="classic-ai.js" defer></script>
+    <script src="nn-ai.js" defer></script>
+    <script src="othello-logic.js" defer></script>
+
+</body>
+</html>
